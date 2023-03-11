@@ -1,6 +1,7 @@
 import mutagen
 from kivy.app import App
 from kivy.core.window import Window
+from kivy.lang import Builder
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.filechooser import FileChooserIconView
@@ -13,6 +14,10 @@ from mutagen.mp4 import MP4
 from mutagen.wave import WAVE, _WaveID3
 
 from metadata_setters import ID3MetadataSetter, MP4MetadataSetter, VorbisMetadataSetter
+from styles import file_chooser_file_icon_entry_styles
+
+# Load custom styles
+Builder.load_string(file_chooser_file_icon_entry_styles)
 
 
 class MutagenMetadataInputGroup(BoxLayout):

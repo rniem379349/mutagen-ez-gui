@@ -231,7 +231,7 @@ class MetadataDisplayPanel(GridLayout):
             self.metadata_widgets[key].value_label.text = ""
 
 
-class MutaGUIMain(BoxLayout):
+class MutaEZGUIMain(BoxLayout):
     """
     Main app window.
     This class builds the structure of the widgets that comprise the app.
@@ -308,14 +308,14 @@ class MutaGUIMain(BoxLayout):
         self.add_widget(self.chooser)
 
 
-class MutaGuiApp(App):
+class MutaGUIApp(App):
     """Mutagen GUI Kivy app object."""
 
     def build(self):
         Window.size = (1000, 580)
-        MutaGUI = MutaGUIMain()
+        MutaGUI = MutaEZGUIMain()
         return MutaGUI
 
 
 if __name__ == "__main__":
-    MutaGuiApp().run()
+    MutaGUIApp().run()

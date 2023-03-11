@@ -1,23 +1,12 @@
-from random import randint
-
 import mutagen
 from kivy.app import App
-from kivy.clock import Clock
 from kivy.core.window import Window
-from kivy.graphics import Color
-from kivy.properties import NumericProperty, ObjectProperty, ReferenceListProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
-from kivy.uix.filechooser import (
-    FileChooserIconView,
-    FileChooserListLayout,
-    FileChooserListView,
-)
+from kivy.uix.filechooser import FileChooserIconView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
-from kivy.uix.widget import Widget
-from kivy.vector import Vector
 from mutagen.id3 import ID3, ID3NoHeaderError
 from mutagen.mp3 import MP3, HeaderNotFoundError
 from mutagen.mp4 import MP4
@@ -105,16 +94,19 @@ class MutagenMetadataInputGroup(BoxLayout):
 class FileExplorer(FileChooserIconView):
     """File explorer widget, linked to metadata display"""
 
-    def __init__(self, input_groups, metadata_display, **kwargs):
+    def __init__(self, input_groups, metadata_display, file_selection_label, **kwargs):
         super().__init__(**kwargs)
         self.input_groups = input_groups
         self.metadata_display = metadata_display
+        self.file_selection_label = file_selection_label
         self.multiselect = True
 
     def on_selection(self, instance, value):
         """
         callback which runs on selecting/deselecting a file in the explorer
         """
+        filenames = [path.split("/")[-1] for path in value]
+        self.file_selection_label.text = f"Selected: {', '.join(filenames)}"
         for input_group in self.input_groups:
             input_group.selection = value
         # Display metadata info only when one file is selected
@@ -124,7 +116,16 @@ class FileExplorer(FileChooserIconView):
             self.metadata_display.clear_metadata_labels()
 
 
-class MetadataDisplayRow(BoxLayout):
+class BorderedBox:
+    """
+    Class to add to widget to give it a border box.
+    Border is added in the .kv file
+    """
+
+    pass
+
+
+class MetadataDisplayRow(BorderedBox, BoxLayout):
     def __init__(self, metadata_key, **kwargs) -> None:
         super().__init__(**kwargs)
         self.orientation = "horizontal"
@@ -140,6 +141,16 @@ class MetadataDisplayRow(BoxLayout):
         )
         self.add_widget(self.key_label)
         self.add_widget(self.value_label)
+
+
+class FileSelectionLabel(BorderedBox, Label):
+    """
+    Label which lists the currently selected files.
+    Useful when unable to see full file name in file chooser.
+    Styled in .kv file.
+    """
+
+    pass
 
 
 class MetadataDisplayPanel(GridLayout):
@@ -160,7 +171,8 @@ class MetadataDisplayPanel(GridLayout):
     def get_metadata(self, filepath):
         try:
             filething = mutagen.File(filepath, easy=True)
-            # edge case: _WaveID3 doesn't seem to implement the mutagen easy tag functionality
+            # edge case:
+            # _WaveID3 doesn't seem to implement the mutagen easy tag functionality
             if isinstance(filething.tags, _WaveID3):
                 artist = ", ".join(
                     getattr(filething.get("TPE1", None), "text", ["Unknown"])
@@ -216,10 +228,11 @@ class MetadataDisplayPanel(GridLayout):
 
 class MutaGUIMain(BoxLayout):
     """
-    Main app window. This class builds the structure of the widgets that comprise the app.
+    Main app window.
+    This class builds the structure of the widgets that comprise the app.
     In essence, the structure is as follows:
-        - The left half of the window consists of an input panel for setting metadata tags,
-          and a metadata display panel below;
+        - The left half of the window consists of an input panel
+          for setting metadata tags, and a metadata display panel below;
         - The right half of the window contains the file explorer widget
           for choosing files to edit.
     """
@@ -230,7 +243,7 @@ class MutaGUIMain(BoxLayout):
         # panel for setting and displaying metadata
         self.metadata_panel = GridLayout(
             cols=1,
-            rows=6,
+            rows=7,
         )
         # input groups
         self.metadata_display_panel = MetadataDisplayPanel(size_hint_y=None, height=240)
@@ -264,12 +277,14 @@ class MutaGUIMain(BoxLayout):
             size_hint_y=None,
             height=50,
         )
+        self.file_selection_label = FileSelectionLabel()
 
         self.metadata_panel.add_widget(self.artist_input_group)
         self.metadata_panel.add_widget(self.album_input_group)
         self.metadata_panel.add_widget(self.title_input_group)
         self.metadata_panel.add_widget(self.track_number_input_group)
         self.metadata_panel.add_widget(self.recording_year_input_group)
+        self.metadata_panel.add_widget(self.file_selection_label)
         self.metadata_panel.add_widget(self.metadata_display_panel)
 
         self.chooser = FileExplorer(
@@ -281,6 +296,7 @@ class MutaGUIMain(BoxLayout):
                 self.recording_year_input_group,
             ],
             metadata_display=self.metadata_display_panel,
+            file_selection_label=self.file_selection_label,
         )
 
         self.add_widget(self.metadata_panel)
@@ -291,6 +307,7 @@ class MutaGuiApp(App):
     """Mutagen GUI Kivy app object."""
 
     def build(self):
+        Window.size = (1000, 580)
         MutaGUI = MutaGUIMain()
         return MutaGUI
 

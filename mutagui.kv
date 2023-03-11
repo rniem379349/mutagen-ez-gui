@@ -1,8 +1,22 @@
-
-<MetadataDisplayRow>:
+<MutaGUIMain>:
     canvas.before:
         Color:
-            rgba: (0.5,0.5,0.5, 1)
+            rgba: 0.1, 0.1, 0.1, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+<BorderedBox>:
+    canvas.before:
+        Color:
+            rgba: 0.5, 0.5, 0.5, 1
         Line:
             width: 1.1
             rectangle: self.x, self.y, self.width, self.height
+
+<FileSelectionLabel>:
+    text_size: self.size
+    halign: "left"
+    valign: "top"
+    text: "Selected:"
+    padding: 5, 5

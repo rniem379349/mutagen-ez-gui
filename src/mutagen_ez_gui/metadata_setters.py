@@ -1,10 +1,8 @@
-from typing import Iterable
+import base64
 
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.gridlayout import GridLayout
-from kivy.uix.label import Label
-from mutagen.id3 import TALB, TDRC, TIT2, TOPE, TPE1, TPE2, TRCK
-from mutagen.oggopus import OggOpus
+from mutagen.flac import Picture
+from mutagen.id3 import APIC, TALB, TDRC, TIT2, TOPE, TPE1, TPE2, TRCK
+from mutagen.mp4 import MP4Cover
 
 
 class BaseMetadataSetter:
@@ -14,6 +12,7 @@ class BaseMetadataSetter:
         "title": "",
         "track_number": "",
         "recording_year": "",
+        "cover": "",
     }
 
     def __init__(self, filething, filepath, input_metadata_key, *args, **kwargs):
@@ -32,6 +31,10 @@ class BaseMetadataSetter:
         key = self.input_metadata_key_to_target_tag_map[self.input_metadata_key]
         self.filething.tags[key] = value
 
+    def set_cover(self, byteimage):
+        key = self.input_metadata_key_to_target_tag_map[self.input_metadata_key]
+        self.filething.tags[key] = byteimage
+
     def save_tags_to_file(self):
         self.filething.save(self.filepath)
 
@@ -49,6 +52,7 @@ class MP4MetadataSetter(BaseMetadataSetter):
         "title": "\xa9nam",
         "track_number": "trkn",
         "recording_year": "\xa9day",
+        "cover": "covr",
     }
 
     def set_tag(self, value):
@@ -59,6 +63,11 @@ class MP4MetadataSetter(BaseMetadataSetter):
         if key == "trkn":
             value = [[int(value), 0]]
         self.filething.tags[key] = value
+
+    def set_cover(self, byteimage):
+        key = self.input_metadata_key_to_target_tag_map[self.input_metadata_key]
+        mp4_cover = [MP4Cover(byteimage)]
+        self.filething.tags[key] = mp4_cover
 
 
 class VorbisMetadataSetter(BaseMetadataSetter):
@@ -76,7 +85,25 @@ class VorbisMetadataSetter(BaseMetadataSetter):
         "title": "title",
         "track_number": "tracknumber",
         "recording_year": "date",
+        "cover": "metadata_block_picture",
     }
+
+    def set_cover(self, byteimage):
+        print("setting image for .opus file")
+        cover = Picture()
+        cover.data = byteimage
+        cover.type = 3
+        cover.mime = "image/jpeg"
+        cover.width = 400
+        cover.height = 400
+        cover.depth = 24
+
+        cover_data = cover.write()
+        encoded_data = base64.b64encode(cover_data)
+        vcomment_value = encoded_data.decode("ascii")
+
+        self.filething["metadata_block_picture"] = [vcomment_value]
+        # file_.save()
 
 
 class ID3MetadataSetter(BaseMetadataSetter):
@@ -98,9 +125,13 @@ class ID3MetadataSetter(BaseMetadataSetter):
         mapped_ID3_tags = self.input_metadata_key_to_id3_tag_map[
             self.input_metadata_key
         ]
-        tags = []
         if not isinstance(mapped_ID3_tags, list):
             mapped_ID3_tags = [mapped_ID3_tags]
         for tag in mapped_ID3_tags:
             filled_tag = tag(encoding=3, text=value)
             self.filething[filled_tag.__class__.__name__] = filled_tag
+
+    def set_cover(self, byteimage):
+        print("setting image for ID3 file")
+        # byteimage = open(picture, 'rb').read()
+        self.filething["APIC"] = APIC(3, "image/jpeg", 3, "Front cover", byteimage)

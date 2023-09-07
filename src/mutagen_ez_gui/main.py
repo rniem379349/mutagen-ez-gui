@@ -1,3 +1,5 @@
+import io
+
 import mutagen
 from kivy.app import App
 from kivy.core.window import Window
@@ -7,55 +9,39 @@ from kivy.uix.button import Button
 from kivy.uix.filechooser import FileChooserIconView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
+from metadata_setters import ID3MetadataSetter, MP4MetadataSetter, VorbisMetadataSetter
 from mutagen.id3 import ID3, ID3NoHeaderError
 from mutagen.mp3 import MP3, HeaderNotFoundError
 from mutagen.mp4 import MP4
 from mutagen.wave import WAVE, _WaveID3
-
-from metadata_setters import ID3MetadataSetter, MP4MetadataSetter, VorbisMetadataSetter
+from PIL import Image
 from styles import file_chooser_file_icon_entry_styles
 
 # Load custom styles
 Builder.load_string(file_chooser_file_icon_entry_styles)
 
 
-class MutagenMetadataInputGroup(BoxLayout):
-    """
-    Widget for setting a particular metadata tag.
-    Contains a text input for the metadata, and a button to set the tag.
-    Needs a metadata tag key, and a list of files to open and add metadata to.
-    Can be supplied a reference to the display panel to instantly
-    reflect metadata changes when setting tags.
-    """
-
+class BaseMutagenMetadataInputGroup:
     metadata_key = ""
     selection = []
+    cover_selection = []
+    is_cover = False
 
     def __init__(self, metadata_key, **kwargs):
         self.metadata_display_panel = kwargs.pop("metadata_display_panel", None)
         super().__init__(**kwargs)
-        self.orientation = "horizontal"
-        self.metadata_key = metadata_key
-        self.metadata_input = TextInput()
-        self.apply_button = Button(
-            halign="center",
-            padding=(5, 5),
-            text="Set {}".format(metadata_key.capitalize().replace("_", " ")),
-            text_size=(120, None),
-            size_hint_x=None,
-            width=120,
-        )
-        self.apply_button.on_press = self.set_metadata
-        self.add_widget(self.metadata_input)
-        self.add_widget(self.apply_button)
 
-    def set_metadata(self):
+    def set_metadata(self, custom_selection=None):
         """
         Try to open the selected files with mutagen,
         guess their type and set the tag using the appropriate metadata setter.
         """
-        for filepath in self.selection:
+        print("custom? ", custom_selection)
+        print("original? ", self.selection)
+        for filepath in custom_selection or self.selection:
+            print("setting for ", filepath)
             try:
                 filething = mutagen.File(filepath)
                 if isinstance(filething, WAVE):
@@ -90,10 +76,50 @@ class MutagenMetadataInputGroup(BoxLayout):
             except Exception as exc:
                 print("Couldn't open file {}, exception: {}".format(filepath, exc))
                 continue
-            metadata_setter.set_tag(self.metadata_input.text)
+            tag_value = self.get_value_to_save_in_tag()
+            if self.metadata_key == "cover":
+                metadata_setter.set_cover(tag_value)
+            else:
+                metadata_setter.set_tag(tag_value)
             metadata_setter.save_tags_to_file()
         if self.metadata_display_panel and len(self.selection) == 1:
             self.metadata_display_panel.set_metadata_labels(self.selection[0])
+
+    def get_value_to_save_in_tag(self):
+        raise NotImplementedError(
+            "override this method to return the value to be saved to a tag "
+            "(e.g. text/image data)."
+        )
+
+
+class MutagenMetadataInputGroup(BaseMutagenMetadataInputGroup, BoxLayout):
+    """
+    Widget for setting a particular metadata tag.
+    Contains a text input for the metadata, and a button to set the tag.
+    Needs a metadata tag key, and a list of files to open and add metadata to.
+    Can be supplied a reference to the display panel to instantly
+    reflect metadata changes when setting tags.
+    """
+
+    def __init__(self, metadata_key, **kwargs):
+        super().__init__(metadata_key, **kwargs)
+        self.orientation = "horizontal"
+        self.metadata_key = metadata_key
+        self.metadata_input = TextInput()
+        self.apply_button = Button(
+            halign="center",
+            padding=(5, 5),
+            text="Set {}".format(metadata_key.capitalize().replace("_", " ")),
+            text_size=(120, None),
+            size_hint_x=None,
+            width=120,
+        )
+        self.apply_button.on_press = self.set_metadata
+        self.add_widget(self.metadata_input)
+        self.add_widget(self.apply_button)
+
+    def get_value_to_save_in_tag(self):
+        return self.metadata_input.text
 
 
 class FileExplorer(FileChooserIconView):
@@ -119,6 +145,50 @@ class FileExplorer(FileChooserIconView):
             self.metadata_display.set_metadata_labels(value[0])
         else:
             self.metadata_display.clear_metadata_labels()
+
+
+class ArtCoverExplorer(FileChooserIconView, BaseMutagenMetadataInputGroup):
+    """Art cover explorer widget, used to select a picture to set as an album cover"""
+
+    metadata_key = "cover"
+
+    def __init__(self, music_file_explorer, **kwargs):
+        super().__init__(**kwargs)
+        self.music_file_explorer = music_file_explorer
+        self.raw_cover_data = b""
+
+    def get_value_to_save_in_tag(self):
+        return self.raw_cover_data
+
+    def convert_to_jpeg(self, image):
+        pass
+
+    def get_raw_cover_data(self, picture):
+        # picture = picture[0]
+        byteIO = io.BytesIO()
+        print("picture path: ", picture)
+        thumb = Image.open(picture)
+        thumb.thumbnail((400, 400), Image.Resampling.LANCZOS)
+        thumb.save(byteIO, format="JPEG")
+        byteimage = byteIO.getvalue()
+
+        return byteimage
+
+    def on_selection(self, instance, value):
+        """
+        callback which runs on selecting/deselecting a file in the explorer
+        """
+        try:
+            self.raw_cover_data = self.get_raw_cover_data(value[0])
+            print(
+                "selection: ",
+                self.music_file_explorer.selection,
+                "setting pic: ",
+                self.raw_cover_data[:10],
+            )
+            self.set_metadata(custom_selection=self.music_file_explorer.selection)
+        except IndexError:
+            print(f"cannot parse selection: {value} - aborting cover setting")
 
 
 class BorderedBox:
@@ -231,6 +301,27 @@ class MetadataDisplayPanel(GridLayout):
             self.metadata_widgets[key].value_label.text = ""
 
 
+class AlbumCoverSetterWindow(Popup):
+    title = "Test popup"
+    close_button = Button(text="Close", size_hint_y=None, height=50)
+    anchor_x = "center"
+    anchor_y = "center"
+    auto_dismiss = False
+
+    def __init__(self, music_file_explorer, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.close_button.on_release = self.dismiss
+        root = BoxLayout()
+        root.orientation = "vertical"
+        root.size = self.size
+        chooser = ArtCoverExplorer(
+            metadata_key="cover", music_file_explorer=music_file_explorer
+        )
+        root.add_widget(chooser)
+        root.add_widget(self.close_button)
+        self.add_widget(root)
+
+
 class MutaEZGUIMain(BoxLayout):
     """
     Main app window.
@@ -248,7 +339,7 @@ class MutaEZGUIMain(BoxLayout):
         # panel for setting and displaying metadata
         self.metadata_panel = GridLayout(
             cols=1,
-            rows=7,
+            rows=8,
         )
         # input groups
         self.metadata_display_panel = MetadataDisplayPanel(size_hint_y=None, height=240)
@@ -284,14 +375,6 @@ class MutaEZGUIMain(BoxLayout):
         )
         self.file_selection_label = FileSelectionLabel()
 
-        self.metadata_panel.add_widget(self.artist_input_group)
-        self.metadata_panel.add_widget(self.album_input_group)
-        self.metadata_panel.add_widget(self.title_input_group)
-        self.metadata_panel.add_widget(self.track_number_input_group)
-        self.metadata_panel.add_widget(self.recording_year_input_group)
-        self.metadata_panel.add_widget(self.file_selection_label)
-        self.metadata_panel.add_widget(self.metadata_display_panel)
-
         self.chooser = FileExplorer(
             input_groups=[
                 self.artist_input_group,
@@ -303,6 +386,25 @@ class MutaEZGUIMain(BoxLayout):
             metadata_display=self.metadata_display_panel,
             file_selection_label=self.file_selection_label,
         )
+        self.album_cover_setter_popup = AlbumCoverSetterWindow(
+            music_file_explorer=self.chooser
+        )
+        self.album_cover_setter_button = Button(
+            text="Set Cover", height=50, size_hint_y=None
+        )
+        self.album_cover_setter_button.bind(on_press=self.album_cover_setter_popup.open)
+        self.album_cover_setter_popup.close_button.bind(
+            on_press=self.album_cover_setter_popup.dismiss
+        )
+
+        self.metadata_panel.add_widget(self.artist_input_group)
+        self.metadata_panel.add_widget(self.album_input_group)
+        self.metadata_panel.add_widget(self.title_input_group)
+        self.metadata_panel.add_widget(self.track_number_input_group)
+        self.metadata_panel.add_widget(self.recording_year_input_group)
+        self.metadata_panel.add_widget(self.album_cover_setter_button)
+        self.metadata_panel.add_widget(self.file_selection_label)
+        self.metadata_panel.add_widget(self.metadata_display_panel)
 
         self.add_widget(self.metadata_panel)
         self.add_widget(self.chooser)

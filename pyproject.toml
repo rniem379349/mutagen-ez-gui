@@ -1,0 +1,21 @@
+[build-system]
+build-backend = "flit_core.buildapi"
+requires = ["flit_core >=3.8,<4"]
+
+[project]
+name = "mutagen_ez_gui"
+version = "1.0.0"
+description = "Mutagen-based GUI for audio file metadata manipulation"
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "mutagen",
+    "kivy",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pip-tools",
+]
